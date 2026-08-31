@@ -263,3 +263,30 @@ plt.show()
 print("\nTraining completed!")
 print("Model saved successfully!")
 print("Target scaler saved successfully!")
+
+# -------------------------
+# 15. Model Fit Analysis
+# -------------------------
+
+final_train_loss = train_losses[-1]
+final_val_loss = val_losses[-1]
+
+loss_ratio = final_val_loss / final_train_loss
+
+print("\nMODEL FIT ANALYSIS")
+print("-------------------------")
+print(f"Final Training Loss:   {final_train_loss:.4f}")
+print(f"Final Validation Loss: {final_val_loss:.4f}")
+print(f"Validation/Training Ratio: {loss_ratio:.2f}")
+
+if loss_ratio > 1.5:
+    print("Result: OVERFITTING")
+    print("Validation loss is substantially higher than training loss.")
+
+elif final_train_loss > 0.5 and final_val_loss > 0.5:
+    print("Result: UNDERFITTING")
+    print("Both training and validation losses remain relatively high.")
+
+else:
+    print("Result: GOOD FIT")
+    print("Training and validation losses are reasonably low and close.")
