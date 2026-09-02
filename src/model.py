@@ -4,24 +4,32 @@ import torch.nn as nn
 
 class HousePriceModel(nn.Module):
 
-    def __init__(self, hidden1=32, hidden2=16):
-
+    def __init__(self):
         super().__init__()
 
         self.network = nn.Sequential(
 
-            nn.Linear(10, hidden1),
+            # Input layer → first hidden layer
+            nn.Linear(10, 32),
 
+            # Activation
             nn.ReLU(),
 
-            nn.Linear(hidden1, hidden2),
+            # Dropout to reduce overfitting
+            nn.Dropout(0.2),
 
+            # Second hidden layer
+            nn.Linear(32, 16),
+
+            # Activation
             nn.ReLU(),
 
-            nn.Linear(hidden2, 1)
+            # Another dropout layer
+            nn.Dropout(0.2),
+
+            # Output layer
+            nn.Linear(16, 1)
         )
 
-
     def forward(self, x):
-
         return self.network(x)

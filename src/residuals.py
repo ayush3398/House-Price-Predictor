@@ -1,20 +1,19 @@
 import pandas as pd
+import numpy as np
 import torch
+import pickle
 import matplotlib.pyplot as plt
-import joblib
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 
 from model import HousePriceModel
 
 
-# Load dataset
-df = pd.read_csv("data/AmesHousing.csv")
+# =========================================================
+# FEATURES
+# =========================================================
 
-
-# Features
-features = [
+FEATURES = [
     "Overall Qual",
     "Gr Liv Area",
     "Garage Cars",
@@ -27,19 +26,26 @@ features = [
     "Lot Area"
 ]
 
-target = "SalePrice"
+TARGET = "SalePrice"
 
 
-# X and y
-X = df[features].copy()
-y = df[target].copy()
+# =========================================================
+# LOAD DATA
+# =========================================================
 
-# Handle missing values
+data = pd.read_csv("data/AmesHousing.csv")
+
+X = data[FEATURES].copy()
+y = data[TARGET].copy()
+
 X = X.fillna(X.median())
 
 
-# Train/test split
-X_train, X_test, y_train, y_test = train_test_split(
+# =========================================================
+# SAME TEST SPLIT
+# =========================================================
+
+X_dev, X_test, y_dev, y_test = train_test_split(
     X,
     y,
     test_size=0.20,
@@ -47,21 +53,33 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 
-# Normalize input features
-scaler = StandardScaler()
+# =========================================================
+# LOAD SCALERS
+# =========================================================
 
-X_train = scaler.fit_transform(X_train)
-X_test = scaler.transform(X_test)
+with open("models/feature_scaler.pkl", "rb") as f:
+    feature_scaler = pickle.load(f)
+
+with open("models/target_scaler.pkl", "rb") as f:
+    target_scaler = pickle.load(f)
 
 
-# Convert test data to tensor
-X_test = torch.tensor(
-    X_test,
+# =========================================================
+# SCALE TEST DATA
+# =========================================================
+
+X_test_scaled = feature_scaler.transform(X_test)
+
+X_test_tensor = torch.tensor(
+    X_test_scaled,
     dtype=torch.float32
 )
 
 
-# Load model
+# =========================================================
+# LOAD MODEL
+# =========================================================
+
 model = HousePriceModel()
 
 model.load_state_dict(
@@ -74,30 +92,44 @@ model.load_state_dict(
 model.eval()
 
 
-# Load target scaler
-target_scaler = joblib.load(
-    "models/target_scaler.pkl"
-)
+# =========================================================
+# PREDICT
+# =========================================================
 
-
-# Make predictions
 with torch.no_grad():
-    predictions = model(X_test)
+
+    predictions_scaled = model(
+        X_test_tensor
+    ).numpy()
 
 
-predictions = predictions.numpy()
-
-# Convert back to dollars
 predictions = target_scaler.inverse_transform(
-    predictions
+    predictions_scaled
 ).flatten()
 
-
-# Calculate residuals
-residuals = y_test.values - predictions
+actual = y_test.values
 
 
-# Plot residuals
+# =========================================================
+# RESIDUALS
+# =========================================================
+
+residuals = actual - predictions
+
+
+print("\n=======================================================")
+print("RESIDUAL ANALYSIS")
+print("=======================================================")
+
+print(f"Mean Residual: ${np.mean(residuals):,.2f}")
+print(f"Mean Absolute Residual: ${np.mean(np.abs(residuals)):,.2f}")
+print(f"Residual Std Dev: ${np.std(residuals):,.2f}")
+
+
+# =========================================================
+# RESIDUAL PLOT
+# =========================================================
+
 plt.figure(figsize=(8, 6))
 
 plt.scatter(
@@ -111,9 +143,12 @@ plt.axhline(
     linestyle="--"
 )
 
-plt.xlabel("Predicted Price")
+plt.xlabel("Predicted Sale Price")
 plt.ylabel("Residual (Actual - Predicted)")
-plt.title("Prediction Error / Residual Plot")
+
+plt.title("Residual Plot")
+
+plt.grid(True)
 
 plt.tight_layout()
 
@@ -121,4 +156,7 @@ plt.savefig(
     "results/residual_plot.png"
 )
 
-plt.show()
+plt.close()
+
+print("\nGraph saved:")
+print("results/residual_plot.png")

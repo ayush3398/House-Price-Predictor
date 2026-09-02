@@ -1,27 +1,24 @@
-import joblib
 import pandas as pd
+import numpy as np
 import torch
+import pickle
 import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score
+)
 
 from model import HousePriceModel
 
 
-# -------------------------
-# 1. Load dataset
-# -------------------------
+# =========================================================
+# FEATURES
+# =========================================================
 
-df = pd.read_csv("data/AmesHousing.csv")
-
-
-# -------------------------
-# 2. Select features
-# -------------------------
-
-features = [
+FEATURES = [
     "Overall Qual",
     "Gr Liv Area",
     "Garage Cars",
@@ -34,25 +31,26 @@ features = [
     "Lot Area"
 ]
 
-target = "SalePrice"
+TARGET = "SalePrice"
 
 
-X = df[features].copy()
-y = df[target].copy()
+# =========================================================
+# LOAD DATA
+# =========================================================
 
+data = pd.read_csv("data/AmesHousing.csv")
 
-# -------------------------
-# 3. Handle missing values
-# -------------------------
+X = data[FEATURES].copy()
+y = data[TARGET].copy()
 
 X = X.fillna(X.median())
 
 
-# -------------------------
-# 4. Train/test split
-# -------------------------
+# =========================================================
+# SAME 80/20 TEST SPLIT
+# =========================================================
 
-X_train, X_test, y_train, y_test = train_test_split(
+X_dev, X_test, y_dev, y_test = train_test_split(
     X,
     y,
     test_size=0.20,
@@ -60,30 +58,32 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 
-# -------------------------
-# 5. Normalize
-# -------------------------
+# =========================================================
+# LOAD SCALERS
+# =========================================================
 
-scaler = StandardScaler()
+with open("models/feature_scaler.pkl", "rb") as f:
+    feature_scaler = pickle.load(f)
 
-X_train = scaler.fit_transform(X_train)
-X_test = scaler.transform(X_test)
+with open("models/target_scaler.pkl", "rb") as f:
+    target_scaler = pickle.load(f)
 
 
-# -------------------------
-# 6. Convert test data
-#    to tensors
-# -------------------------
+# =========================================================
+# SCALE TEST DATA
+# =========================================================
 
-X_test = torch.tensor(
-    X_test,
+X_test_scaled = feature_scaler.transform(X_test)
+
+X_test_tensor = torch.tensor(
+    X_test_scaled,
     dtype=torch.float32
 )
 
 
-# -------------------------
-# 7. Load trained model
-# -------------------------
+# =========================================================
+# LOAD MODEL
+# =========================================================
 
 model = HousePriceModel()
 
@@ -97,77 +97,94 @@ model.load_state_dict(
 model.eval()
 
 
-# -------------------------
-# 8. Make predictions
-# -------------------------
-
-target_scaler = joblib.load(
-    "models/target_scaler.pkl"
-)
+# =========================================================
+# PREDICTIONS
+# =========================================================
 
 with torch.no_grad():
-    predictions = model(X_test)
 
+    predictions_scaled = model(
+        X_test_tensor
+    ).numpy()
 
-predictions = predictions.numpy()
 
 # Convert predictions back to dollars
+
 predictions = target_scaler.inverse_transform(
-    predictions
+    predictions_scaled
 ).flatten()
 
+actual = y_test.values
 
-# -------------------------
-# 9. Calculate metrics
-# -------------------------
+
+# =========================================================
+# METRICS
+# =========================================================
 
 mae = mean_absolute_error(
-    y_test,
+    actual,
     predictions
 )
 
-rmse = mean_squared_error(
-    y_test,
+mse = mean_squared_error(
+    actual,
     predictions
-) ** 0.5
+)
+
+rmse = np.sqrt(mse)
 
 r2 = r2_score(
-    y_test,
+    actual,
     predictions
 )
 
 
-print("\nMODEL PERFORMANCE")
-print("-------------------------")
-print(f"MAE:  ${mae:,.2f}")
-print(f"RMSE: ${rmse:,.2f}")
-print(f"R²:   {r2:.4f}")
+# =========================================================
+# RESULTS
+# =========================================================
+
+print("\n=======================================================")
+print("FINAL TEST SET EVALUATION")
+print("=======================================================")
+
+print(f"Test samples:     {len(X_test)}")
+print(f"MAE:              ${mae:,.2f}")
+print(f"MSE:              {mse:,.2f}")
+print(f"RMSE:             ${rmse:,.2f}")
+print(f"R² Score:         {r2:.4f}")
+
+print("=======================================================")
 
 
-# -------------------------
-# 10. Actual vs Predicted
-# -------------------------
+# =========================================================
+# ACTUAL VS PREDICTED GRAPH
+# =========================================================
 
 plt.figure(figsize=(8, 6))
 
 plt.scatter(
-    y_test,
+    actual,
     predictions,
     alpha=0.6
 )
 
-plt.xlabel("Actual Price")
-plt.ylabel("Predicted Price")
-plt.title("Actual vs Predicted House Prices")
-
 # Perfect prediction line
-min_price = min(y_test.min(), predictions.min())
-max_price = max(y_test.max(), predictions.max())
+
+minimum = min(actual.min(), predictions.min())
+maximum = max(actual.max(), predictions.max())
 
 plt.plot(
-    [min_price, max_price],
-    [min_price, max_price]
+    [minimum, maximum],
+    [minimum, maximum],
+    linestyle="--"
 )
+
+plt.xlabel("Actual Sale Price")
+plt.ylabel("Predicted Sale Price")
+
+plt.title("Actual vs Predicted House Prices")
+
+plt.grid(True)
 
 plt.tight_layout()
 
@@ -175,4 +192,7 @@ plt.savefig(
     "results/actual_vs_predicted.png"
 )
 
-plt.show()
+plt.close()
+
+print("\nGraph saved:")
+print("results/actual_vs_predicted.png")
